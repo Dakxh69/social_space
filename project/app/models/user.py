@@ -49,6 +49,11 @@ class User(Base):
         default=False,
         nullable=False
     )
+    is_verified=mapped_column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

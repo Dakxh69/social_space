@@ -4,6 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,or_
 from app.schemas.user import UserCreate,UserLogin
 from app.dependencies.security import hash_password,create_access_token, verify_password
+from app.utils.email_verification import(
+   create_email_verification_token,
+   verify_email_verification_token
+)
+from app.services.email_service import send_verification_email
 
 
 from app.database.session import get_db
@@ -72,6 +77,15 @@ async def register_user(
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
+    verification_token=create_email_verification_token(
+       new_user.id
+    )
+    verification_link=f"http://localhost:8000/auth/verify-email?token={verification_token}"
+    await send_verification_email(
+        email=new_user.email,
+        name=new_user.name,
+        verification_link=verification_link
+    )
     return {
         "message": "User registered successfully",
         "user": {
@@ -79,9 +93,49 @@ async def register_user(
             "name": new_user.name,
             "email": new_user.email,
             "profile_image": new_user.profile_image,
-            
+            "is_verified": new_user.is_verified
         }
     }
+
+@router.get("/verify-email")
+async def verify_email(
+    token: str,
+    db: AsyncSession = Depends(get_db)
+):
+    user_id = verify_email_verification_token(token)
+
+    print("USER ID:", user_id)
+
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired token"
+        )
+
+    user = await db.get(User, user_id)
+
+    print("USER:", user)
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    user.is_verified = True
+
+    print("BEFORE COMMIT:", user.is_verified)
+
+    await db.commit()
+    await db.refresh(user)
+
+    print("AFTER COMMIT:", user.is_verified)
+
+    return {
+        "message": "Email verified successfully"
+    }
+
+
 
 @router.post("/login")
 async def login_user(
@@ -118,6 +172,18 @@ async def login_user(
         status_code=401,
         detail="Invalid  password"
      )
+   
+   db_user=await db.scalar(
+      select(User).where(
+         (User.email==existing_user.email) | (User.name==existing_user.name)
+      )
+   )
+
+   if not db_user.is_verified:
+      raise HTTPException(
+         status_code=403,
+         detail="Email not verified"
+      )
    
    
    token=create_access_token(

@@ -8,6 +8,9 @@ from app.routers.posts import router as post_router
 from app.routers.users import router as users_router
 from app.routers.chat import router as chat_router
 from app.routers.chat_websocket import router as chat_ws_router
+from app.utils.email_verification import (
+    create_email_verification_token
+)
 
 
 app=FastAPI()
